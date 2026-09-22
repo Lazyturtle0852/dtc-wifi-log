@@ -2,12 +2,19 @@ name: Collect WiFi clients
 
 on:
   schedule:
-    # Every 10 minutes, offset from :00 to avoid GitHub peak-load drops.
-    - cron: "7,17,27,37,47,57 * * * *"
+    # Backup seed only — GitHub schedule is best-effort and may not fire.
+    - cron: "13 * * * *"
   workflow_dispatch:
+    inputs:
+      rounds:
+        description: "Collect rounds (10 min apart). Default ~5.5h."
+        required: false
+        default: "33"
+        type: string
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: wifi-collect
@@ -16,6 +23,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,20 +36,42 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Fetch and append CSV
+      - name: Collect every 10 minutes
         env:
           WIFI_API_URL: ${{ vars.WIFI_API_URL || 'https://api.dtc.wide.ad.jp/crowd' }}
           WIFI_API_FORMAT: ${{ vars.WIFI_API_FORMAT || 'dtc_crowd' }}
-        run: python src/fetch.py
-
-      - name: Commit and push data
+          ROUNDS: ${{ inputs.rounds || '33' }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/wifi_clients.csv
-          if git diff --staged --quiet; then
-            echo "No CSV changes to commit."
-            exit 0
+          rounds="${ROUNDS}"
+          echo "Running ${rounds} round(s)"
+          for i in $(seq 1 "${rounds}"); do
+            echo "::group::Round ${i}/${rounds} $(date -u +%Y-%m-%dT%H:%MZ)"
+            git pull --rebase origin main || true
+            python src/fetch.py
+            git add data/wifi_clients.csv
+            if git diff --staged --quiet; then
+              echo "No CSV changes to commit."
+            else
+              git commit -m "data: wifi client snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+              git push
+            fi
+            echo "::endgroup::"
+            if [ "${i}" -lt "${rounds}" ]; then
+              sleep 600
+            fi
+          done
+
+      - name: Chain next window
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "WORKFLOW_DISPATCH_TOKEN is not set; cannot self-chain."
+            exit 1
           fi
-          git commit -m "data: wifi client snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push
+          gh workflow run collect.yml --repo "${GITHUB_REPOSITORY}"
+          echo "Dispatched next collect window."

@@ -55,8 +55,13 @@ python3 src/compute_baseline.py
 
 ## GitHub Actions
 
-`.github/workflows/collect.yml` が10分おきに `fetch.py` を実行し、CSVをコミットします。  
-PCを閉じていてもデータが溜まります。
+`.github/workflows/collect.yml` が約10分おきに `fetch.py` を実行し、CSVをコミットします。
+
+GitHub の `schedule` だけでは発火しないことがあるため、**一度起動したら PAT で次の実行を自分でキックする**方式にしています（`WORKFLOW_DISPATCH_TOKEN` secret）。初回だけ Actions から Run workflow、または:
+
+```bash
+gh workflow run "Collect WiFi clients" --repo Lazyturtle0852/dtc-wifi-log
+```
 
 ## API 形式
 
