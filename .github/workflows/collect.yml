@@ -51,7 +51,8 @@ jobs:
             echo "::group::Round ${i}/${rounds} $(date -u +%Y-%m-%dT%H:%MZ)"
             git pull --rebase origin main || true
             python src/fetch.py
-            git add data/wifi_clients.csv
+            python src/reshape_wide.py
+            git add data/wifi_clients.csv data/wifi_clients_wide.csv
             if git diff --staged --quiet; then
               echo "No CSV changes to commit."
             else

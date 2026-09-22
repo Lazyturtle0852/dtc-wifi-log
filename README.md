@@ -32,7 +32,9 @@ python3 src/fetch.py
 
 ## CSV 形式
 
-`data/wifi_clients.csv`
+### 収集用（長形式）`data/wifi_clients.csv`
+
+ベースライン計算など処理向け。1タイムスタンプ×館で1行。
 
 ```csv
 timestamp,scope,client_count
@@ -43,6 +45,17 @@ timestamp,scope,client_count
 
 - `scope=all` … 建物別 `apClientCount` の合計
 - `scope=<buildingKey>` … 建物（κ館= `kappa` など）ごとの AP 接続数
+
+### 閲覧用（横形式）`data/wifi_clients_wide.csv`
+
+人間が見やすい版。1タイムスタンプで1行、列が `total` と各館。
+
+```csv
+timestamp,total,kappa,epsilon,iota,omicron,delta,tau,mu,omega,alpha,theta,lambda,sigma,lounge
+2026-09-22T19:51:00+09:00,133,18,4,3,9,39,17,11,0,9,4,16,2,1
+```
+
+長形式から `python3 src/reshape_wide.py` で再生成できます（収集時にも自動更新）。
 
 ## ベースライン・差分
 

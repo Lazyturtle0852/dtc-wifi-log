@@ -167,6 +167,15 @@ def main() -> int:
 
     append_rows(CSV_PATH, rows, timestamp)
 
+    try:
+        from reshape_wide import reshape
+
+        wide_path = Path(os.environ.get("WIFI_WIDE_CSV_PATH", DATA_DIR / "wifi_clients_wide.csv"))
+        n_wide = reshape(CSV_PATH, wide_path)
+        print(f"Wrote {n_wide} wide row(s) to {wide_path}")
+    except Exception as exc:  # noqa: BLE001 — wide view must not break collection
+        print(f"Wide CSV reshape skipped: {exc}", file=sys.stderr)
+
     for scope, count in rows:
         print(f"{timestamp}\t{scope}\t{count}")
     print(f"Appended {len(rows)} row(s) to {CSV_PATH}")
