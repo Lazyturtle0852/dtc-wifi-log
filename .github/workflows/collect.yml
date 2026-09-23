@@ -45,6 +45,25 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git_push_with_retry() {
+            local attempt=1
+            local max_attempts=5
+            local delay=5
+            while [ "${attempt}" -le "${max_attempts}" ]; do
+              if git push 2>&1; then
+                return 0
+              fi
+              echo "git push failed (attempt ${attempt}/${max_attempts}); rebasing and retrying in ${delay}s..."
+              git pull --rebase origin main || true
+              sleep "${delay}"
+              attempt=$((attempt + 1))
+              delay=$((delay * 3))
+            done
+            echo "git push failed after ${max_attempts} attempts."
+            return 1
+          }
+
           rounds="${ROUNDS}"
           echo "Running ${rounds} round(s)"
           for i in $(seq 1 "${rounds}"); do
@@ -57,7 +76,7 @@ jobs:
               echo "No CSV changes to commit."
             else
               git commit -m "data: wifi client snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
-              git push
+              git_push_with_retry
             fi
             echo "::endgroup::"
             if [ "${i}" -lt "${rounds}" ]; then
