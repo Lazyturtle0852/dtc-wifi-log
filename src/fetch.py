@@ -7,6 +7,7 @@ import csv
 import json
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -31,10 +32,29 @@ def to_local_iso(value: str) -> str:
     return ts.astimezone(TIMEZONE).replace(microsecond=0).isoformat()
 
 
-def fetch_json(url: str) -> dict:
-    response = requests.get(url, timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
-    return response.json()
+def fetch_json(url: str, max_attempts: int | None = None, base_delay: float | None = None) -> dict:
+    attempts = max_attempts or int(os.environ.get("WIFI_FETCH_MAX_ATTEMPTS", "5"))
+    delay = base_delay or float(os.environ.get("WIFI_FETCH_RETRY_DELAY_SEC", "5"))
+    last_error: requests.RequestException | None = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt == attempts:
+                break
+            print(
+                f"fetch failed (attempt {attempt}/{attempts}): {exc}; retrying in {delay}s...",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
+            delay *= 3
+
+    assert last_error is not None
+    raise last_error
 
 
 def parse_counts(body: str, fmt: str) -> tuple[str, list[tuple[str, int]]]:

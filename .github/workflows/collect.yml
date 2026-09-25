@@ -70,16 +70,19 @@ jobs:
             echo "::group::Round ${i}/${rounds} $(date -u +%Y-%m-%dT%H:%MZ)"
             git pull --rebase origin main || true
             if [ "${i}" -eq 1 ]; then
-              python src/backfill_gaps.py
+              python src/backfill_gaps.py || echo "backfill skipped due to error."
             fi
-            python src/fetch.py
-            python src/reshape_wide.py
-            git add data/wifi_clients.csv data/wifi_clients_wide.csv
-            if git diff --staged --quiet; then
-              echo "No CSV changes to commit."
+            if ! python src/fetch.py; then
+              echo "fetch failed after retries; skipping this round."
             else
-              git commit -m "data: wifi client snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
-              git_push_with_retry
+              python src/reshape_wide.py
+              git add data/wifi_clients.csv data/wifi_clients_wide.csv
+              if git diff --staged --quiet; then
+                echo "No CSV changes to commit."
+              else
+                git commit -m "data: wifi client snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+                git_push_with_retry
+              fi
             fi
             echo "::endgroup::"
             if [ "${i}" -lt "${rounds}" ]; then
