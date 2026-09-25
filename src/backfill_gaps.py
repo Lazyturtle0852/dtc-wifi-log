@@ -89,6 +89,11 @@ def find_gap_regions(
     for prev_ts, next_ts in zip(timestamps, timestamps[1:]):
         if next_ts - prev_ts > threshold:
             regions.append((prev_ts, next_ts))
+
+    last_ts = timestamps[-1]
+    now = datetime.now(TIMEZONE)
+    if now - last_ts > threshold:
+        regions.append((last_ts, now))
     return regions
 
 
