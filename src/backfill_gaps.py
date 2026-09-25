@@ -11,9 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlparse, urlunparse
 
-import requests
-
-from fetch import CSV_PATH, DATA_DIR, DEFAULT_API_URL, TIMEZONE, parse_dtc_crowd
+from fetch import CSV_PATH, DATA_DIR, DEFAULT_API_URL, TIMEZONE, fetch_json, parse_dtc_crowd
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INTERVAL = int(os.environ.get("WIFI_COLLECT_INTERVAL_SEC", "600"))
@@ -105,9 +103,7 @@ def expected_targets(start: datetime, end: datetime, interval_sec: int) -> list[
 
 
 def fetch_snapshot_at(api_base: str, when: datetime) -> tuple[str, list[tuple[str, int]]]:
-    response = requests.get(crowd_time_url(api_base, when), timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
-    return parse_dtc_crowd(response.json())
+    return parse_dtc_crowd(fetch_json(crowd_time_url(api_base, when)))
 
 
 def snapshots_from_range(
@@ -117,9 +113,7 @@ def snapshots_from_range(
     existing: list[datetime],
     interval_sec: int,
 ) -> list[tuple[str, list[tuple[str, int]]]]:
-    response = requests.get(crowd_range_url(api_base, start, end), timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
-    payload = response.json()
+    payload = fetch_json(crowd_range_url(api_base, start, end))
 
     targets = expected_targets(start, end, interval_sec)
     if not targets:
