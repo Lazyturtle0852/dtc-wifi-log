@@ -21,6 +21,7 @@ TIMEZONE = ZoneInfo(os.environ.get("WIFI_TIMEZONE", "Asia/Tokyo"))
 REQUEST_TIMEOUT = float(os.environ.get("WIFI_REQUEST_TIMEOUT", "30"))
 DEFAULT_API_URL = "https://api.dtc.wide.ad.jp/crowd"
 DEFAULT_API_FORMAT = "dtc_crowd"
+MAX_SNAPSHOT_AGE_SEC = float(os.environ.get("WIFI_MAX_SNAPSHOT_AGE_SEC", "1800"))
 
 
 def now_iso() -> str:
@@ -30,6 +31,36 @@ def now_iso() -> str:
 def to_local_iso(value: str) -> str:
     ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return ts.astimezone(TIMEZONE).replace(microsecond=0).isoformat()
+
+
+def is_fresh_timestamp(timestamp: str, max_age_sec: float | None = None) -> bool:
+    max_age = max_age_sec if max_age_sec is not None else MAX_SNAPSHOT_AGE_SEC
+    measured = datetime.fromisoformat(timestamp).astimezone(TIMEZONE)
+    age_sec = (datetime.now(TIMEZONE) - measured).total_seconds()
+    return age_sec <= max_age
+
+
+def reading_client_count(reading: dict) -> int | None:
+    for key in ("apClientCount", "clientCount"):
+        count = reading.get(key)
+        if count is not None:
+            return int(count)
+    return None
+
+
+def snapshot_timestamp(payload: dict) -> str:
+    for key in ("measuredAt", "latestRawAt", "generatedAt"):
+        value = payload.get(key)
+        if not value:
+            continue
+        local = to_local_iso(value)
+        if is_fresh_timestamp(local):
+            return local
+    for key in ("latestRawAt", "generatedAt", "measuredAt"):
+        value = payload.get(key)
+        if value:
+            return to_local_iso(value)
+    return now_iso()
 
 
 def fetch_json(url: str, max_attempts: int | None = None, base_delay: float | None = None) -> dict:
@@ -105,21 +136,19 @@ def parse_counts(body: str, fmt: str) -> tuple[str, list[tuple[str, int]]]:
 
 
 def parse_dtc_crowd(payload: dict) -> tuple[str, list[tuple[str, int]]]:
-    measured_at = payload.get("measuredAt") or payload.get("generatedAt")
-    timestamp = to_local_iso(measured_at) if measured_at else now_iso()
+    timestamp = snapshot_timestamp(payload)
 
     rows: list[tuple[str, int]] = []
     total = 0
     for reading in payload.get("readings", []):
-        count = reading.get("apClientCount")
+        count = reading_client_count(reading)
         if count is None:
             continue
         area = reading.get("areaKey") or reading.get("buildingKey")
         if area is None:
             continue
-        count_int = int(count)
-        rows.append((str(area), count_int))
-        total += count_int
+        rows.append((str(area), count))
+        total += count
 
     rows.append(("all", total))
     return timestamp, rows
@@ -184,6 +213,12 @@ def main() -> int:
     else:
         payload = fetch_json(url)
         timestamp, rows = parse_counts(json.dumps(payload), fmt)
+        if not is_fresh_timestamp(timestamp):
+            print(
+                f"Snapshot too old ({timestamp}); skipping append (API may be degraded).",
+                file=sys.stderr,
+            )
+            return 1
 
     append_rows(CSV_PATH, rows, timestamp)
 
