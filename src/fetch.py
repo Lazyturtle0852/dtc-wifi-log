@@ -21,6 +21,7 @@ TIMEZONE = ZoneInfo(os.environ.get("WIFI_TIMEZONE", "Asia/Tokyo"))
 REQUEST_TIMEOUT = float(os.environ.get("WIFI_REQUEST_TIMEOUT", "30"))
 DEFAULT_API_URL = "https://api.dtc.wide.ad.jp/crowd"
 DEFAULT_API_FORMAT = "dtc_crowd"
+MAX_SNAPSHOT_AGE_SEC = float(os.environ.get("WIFI_MAX_SNAPSHOT_AGE_SEC", "1800"))
 
 
 def now_iso() -> str:
@@ -30,6 +31,13 @@ def now_iso() -> str:
 def to_local_iso(value: str) -> str:
     ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return ts.astimezone(TIMEZONE).replace(microsecond=0).isoformat()
+
+
+def is_fresh_timestamp(timestamp: str, max_age_sec: float | None = None) -> bool:
+    max_age = max_age_sec if max_age_sec is not None else MAX_SNAPSHOT_AGE_SEC
+    measured = datetime.fromisoformat(timestamp).astimezone(TIMEZONE)
+    age_sec = (datetime.now(TIMEZONE) - measured).total_seconds()
+    return age_sec <= max_age_sec
 
 
 def fetch_json(url: str, max_attempts: int | None = None, base_delay: float | None = None) -> dict:
@@ -184,6 +192,12 @@ def main() -> int:
     else:
         payload = fetch_json(url)
         timestamp, rows = parse_counts(json.dumps(payload), fmt)
+        if not is_fresh_timestamp(timestamp):
+            print(
+                f"Snapshot too old ({timestamp}); skipping append (API may be degraded).",
+                file=sys.stderr,
+            )
+            return 1
 
     append_rows(CSV_PATH, rows, timestamp)
 
