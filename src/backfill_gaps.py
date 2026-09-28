@@ -131,7 +131,8 @@ def snapshots_from_range(
         scope = reading.get("areaKey") or reading.get("buildingKey")
         if scope is None:
             continue
-        for measured_at, count in zip(reading.get("measuredAts", []), reading.get("apClientCounts", [])):
+        counts = reading.get("apClientCounts") or reading.get("clientCounts") or []
+        for measured_at, count in zip(reading.get("measuredAts", []), counts):
             if count is None:
                 continue
             measured = datetime.fromisoformat(measured_at.replace("Z", "+00:00")).astimezone(TIMEZONE)
